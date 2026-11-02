@@ -1,0 +1,34 @@
+name: 원장님 목소리 복제 (한 번만)
+
+on:
+  workflow_dispatch:
+    inputs:
+      youtube:
+        description: "원장님 목소리가 나오는 유튜브 주소"
+        default: ""
+      start:
+        description: "시작 시간 (예: 2:10)"
+        default: "0:00"
+      end:
+        description: "끝 시간 (예: 3:05) — 원장님 혼자 말하는 30초~1분"
+        default: ""
+      audio_url:
+        description: "(유튜브 대신) 녹음 파일 직접 주소"
+        default: ""
+
+jobs:
+  clone:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+          pip install -q yt-dlp
+      - env:
+          TYPECAST_API_KEY: ${{ secrets.TYPECAST_API_KEY }}
+        run: |
+          if [ -n "${{ inputs.audio_url }}" ]; then
+            python pipeline/clone_voice.py --audio-url "${{ inputs.audio_url }}" --start "${{ inputs.start }}" --end "${{ inputs.end }}"
+          else
+            python pipeline/clone_voice.py --youtube "${{ inputs.youtube }}" --start "${{ inputs.start }}" --end "${{ inputs.end }}"
+          fi

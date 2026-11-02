@@ -1,0 +1,59 @@
+name: 주간 쇼츠 제작
+
+on:
+  schedule:
+    - cron: "0 12 * * 0"   # 매주 일요일 21:00 (한국시간)
+  workflow_dispatch:
+    inputs:
+      count:
+        description: "만들 개수"
+        default: "5"
+      preview:
+        description: "미리보기만 (대본을 소진하지 않고 결과만 다운로드)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: 도구 설치
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg fonts-noto-cjk fonts-noto-cjk-extra
+          pip install -q -r requirements.txt
+      - name: 쇼츠 만들기
+        env:
+          TYPECAST_API_KEY: ${{ secrets.TYPECAST_API_KEY }}
+          TYPECAST_ASHLEY_VOICE_ID: ${{ secrets.TYPECAST_ASHLEY_VOICE_ID }}
+          TYPECAST_NARRATOR_VOICE_ID: ${{ secrets.TYPECAST_NARRATOR_VOICE_ID }}
+        run: |
+          if [ "${{ inputs.preview }}" = "true" ]; then
+            python pipeline/render.py --count "${{ inputs.count || 5 }}"
+          else
+            python pipeline/render.py --count "${{ inputs.count || 5 }}" --consume
+          fi
+      - name: 미리보기 파일 올리기
+        if: ${{ inputs.preview }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview
+          path: out/
+      - name: 이번 주 묶음으로 공개 (업리카가 여기서 가져감)
+        if: ${{ !inputs.preview }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ ! -f out/manifest.json ] || [ "$(cat out/manifest.json)" = "[]" ]; then echo "만든 영상 없음"; exit 0; fi
+          TAG="week-$(TZ=Asia/Seoul date +%Y%m%d-%H%M)"
+          gh release create "$TAG" out/*.mp4 out/manifest.json --title "$TAG" --notes "주간 쇼츠 묶음"
+          git config user.name "highavenue-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add content/
+          git commit -m "대본 사용 처리: $TAG" || true
+          git push
